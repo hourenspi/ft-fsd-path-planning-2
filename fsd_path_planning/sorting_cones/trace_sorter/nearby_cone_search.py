@@ -35,12 +35,12 @@ SEARCH_DIRECTIONS_CACHE_TYPE = Dict[SEARCH_DIRECTIONS_CACHE_KEY_TYPE, FloatArray
 
 SENTINEL_VALUE = maxsize - 10
 
-
+# richiamata da pre_caluclate_search_directions
 @my_njit
 def create_search_directions_cache() -> SEARCH_DIRECTIONS_CACHE_TYPE:
     return {(SENTINEL_VALUE, SENTINEL_VALUE, SENTINEL_VALUE): np.array([-1.0, -1.0])}
 
-
+# richiamata da precalculate_search_directions
 @my_njit
 def calculate_match_search_direction_for_one_if_not_in_cache(
     cones_xy: FloatArray,
@@ -48,6 +48,7 @@ def calculate_match_search_direction_for_one_if_not_in_cache(
     cone_type: ConeTypes,
     cache_dict: SEARCH_DIRECTIONS_CACHE_TYPE,
 ) -> FloatArray:
+#     Calculates the search direction for one cone
     if key not in cache_dict:
         cache_dict[key] = calculate_search_direction_for_one(
             cones_xy, key[0::2], cone_type
@@ -55,7 +56,7 @@ def calculate_match_search_direction_for_one_if_not_in_cache(
 
     return cache_dict[key]
 
-
+# richiamata da _impl_number_cones_on_each_side_for_each_config
 @my_njit
 def pre_caluclate_search_directions(
     cones: FloatArray,
@@ -85,13 +86,14 @@ def pre_caluclate_search_directions(
 
         for j in range(1, len(c) - 1):
             key = (c[j - 1], c[j], c[j + 1])
+             # calcolo tutte le direzioni rispetto a tutti coni
             calculate_match_search_direction_for_one_if_not_in_cache(
                 cones_xy, key, cone_type, cache
             )
 
     return cache
 
-
+# richiamata da find_nearby_cones_for_idxs
 @my_njit
 def sorted_set_diff(a: IntArray, b: IntArray) -> IntArray:
     """Returns the set difference between a and b, assume a,b are sorted."""
@@ -100,7 +102,7 @@ def sorted_set_diff(a: IntArray, b: IntArray) -> IntArray:
     mask[np.searchsorted(a, b)] = False
     return a[mask]
 
-
+# richiamato da _impl_number_cones_on_each_side_for_each_config
 @my_njit
 def find_nearby_cones_for_idxs(
     idxs: IntArray, distance_matrix_sqaured: FloatArray, search_range: float
@@ -132,7 +134,7 @@ def create_angle_cache() -> ANGLE_MASK_CACHE_TYPE:
 
     return d
 
-
+# richiamato da angle_between_search_direction_of_cone_and_other_cone_is_too_large_if_not_in_cache
 @my_njit
 def angle_between_search_direction_of_cone_and_other_cone_is_too_large(
     all_cone_directions: FloatArray,
@@ -181,7 +183,7 @@ def angle_between_search_direction_of_cone_and_other_cone_is_too_large_if_not_in
 
     return angle_cache[key]
 
-
+# richiamato da _impl_number_cones_of_each_side_for_each_config
 @my_njit
 def calculate_visible_cones_for_one_cone(
     cone_idx: int,
@@ -223,7 +225,8 @@ def calculate_visible_cones_for_one_cone(
 
     return good_mask, bad_mask
 
-
+# richiamato da number_cones_on_each_side_for_each_config
+# in cost_function.py
 @my_njit
 def _impl_number_cones_on_each_side_for_each_config(
     cones: FloatArray,
@@ -253,23 +256,37 @@ def _impl_number_cones_on_each_side_for_each_config(
     """
     cones_xy = cones[:, :2]
 
+    # Find the unique elements of an array.
     idxs_in_all_configs = np.unique(configs)
+    # quelle valide
     idxs_in_all_configs = idxs_in_all_configs[idxs_in_all_configs != -1]
 
     if cones_to_cones_vecs is None:
+        # np.expand_dims(cones_xy, 1): The np.expand_dims function is used to add a new axis to the array. 
+        # Specifically, np.expand_dims(cones_xy, 1) adds a new axis at position 1, converting the shape of cones_xy from (n, 2) to (n, 1, 2).
         cones_to_cones_vecs = cones_xy - np.expand_dims(cones_xy, 1)
 
+        # The operation computes the difference between every pair of cone positions. 
+        # In other words, for each cone, we subtract the position of every other cone, 
+        # resulting in a matrix of vectors where each vector represents the displacement from one cone to another.
+
     if distance_matrix_square is None:
+        # distanza euclidea tra ogni cono, restituisce matrice 
         distance_matrix_square = my_cdist_sq_euclidean(cones_xy, cones_xy)
+        # riempie la diagonale con infinito per le distanze tra coni e se stessi
         np.fill_diagonal(
             distance_matrix_square, 1e6
         )  # for some reason np.inf doesn't work here
 
+    # maschera booleana: se la distanza euclidea tra i coni è minore della serach_distance^2 = true
+    # serach_distance = la distanza da cercare per i coni
     distance_matrix_mask = distance_matrix_square < search_distance * search_distance
 
+    # cache con direzioni
     search_directions_cache = pre_caluclate_search_directions(
         cones, configs, cone_type, existing_search_directions_cache
     )
+
 
     close_idxs = find_nearby_cones_for_idxs(
         idxs_in_all_configs, distance_matrix_square, search_distance
@@ -356,6 +373,8 @@ class NearbyConeSearcher:
 
         return self.caches_cache[index_of_hashed_values][1]
 
+    # richiamata da calc_cones_on_either_cost
+    # (cone_distance_cost.py)
     def number_of_cones_on_each_side_for_each_config(
         self,
         cones: np.ndarray,

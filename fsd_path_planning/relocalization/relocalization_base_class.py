@@ -2,6 +2,7 @@
 # -*- coding:utf-8 -*-
 """
 Description: Place the car in the known map and relocalize it.
+- 
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
@@ -20,6 +21,7 @@ class RelocalizationCallable(Protocol):
 
 class Relocalizer(ABC):
     def __init__(self):
+        # posizione e direzione originali della macchina
         self._original_vehicle_position: FloatArray | None = None
         self._original_vehicle_direction: FloatArray | None = None
 
@@ -46,6 +48,7 @@ class Relocalizer(ABC):
     def get_known_global_path(self) -> FloatArray:
         pass
 
+    # richiamato in full_pipeline.py
     def attempt_relocalization_calculation(
         self,
         cones: list[FloatArray],

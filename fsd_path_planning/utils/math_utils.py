@@ -14,7 +14,7 @@ from numba import jit
 
 T = TypeVar("T")
 
-
+# viene prima compilato in codice macchina e poi eseguito
 def my_njit(func: T) -> T:
     """
     numba.njit is an untyped decorator. This wrapper helps type checkers keep the
@@ -31,7 +31,7 @@ def my_njit(func: T) -> T:
 
     return jit_func
 
-
+#
 @my_njit
 def vec_dot(vecs1: np.ndarray, vecs2: np.ndarray) -> np.ndarray:
     """
@@ -47,6 +47,7 @@ def vec_dot(vecs1: np.ndarray, vecs2: np.ndarray) -> np.ndarray:
     return np.sum(vecs1 * vecs2, axis=-1)
 
 
+# shape?
 @my_njit
 def norm_of_last_axis(arr: np.ndarray) -> np.ndarray:
     original_shape = arr.shape
@@ -60,7 +61,7 @@ def norm_of_last_axis(arr: np.ndarray) -> np.ndarray:
 
     return result
 
-
+#calcolo angolo tra vettori
 @my_njit
 def vec_angle_between(
     vecs1: np.ndarray, vecs2: np.ndarray, clip_cos_theta: bool = True
@@ -87,6 +88,7 @@ def vec_angle_between(
 
     cos_theta = np.asarray(cos_theta)
 
+    # ritorna un array contiguo flat ( flat = tutto in un'unica dimensione)
     cos_theta_flat = cos_theta.ravel()
 
     if clip_cos_theta:
@@ -95,9 +97,11 @@ def vec_angle_between(
 
     return np.arccos(cos_theta)
 
-
-@my_njit
+ @my_njit
+ # ruota i punti in senso anti orario rispetto all'origine 
 def rotate(points: np.ndarray, theta: float) -> np.ndarray:
+    # theta: angolo di rotazione in radianti
+    # 
     """
     Rotates the points in `points` by angle `theta` around the origin
 
@@ -109,10 +113,16 @@ def rotate(points: np.ndarray, theta: float) -> np.ndarray:
         np.array: The points rotated
     """
     cos_theta, sin_theta = np.cos(theta), np.sin(theta)
+    # matrice di rotazione
+    # viene trasposta per la convenzione del prodotto di numpy
+    # se theta pos -> rotazione positiva
     rotation_matrix = np.array(((cos_theta, -sin_theta), (sin_theta, cos_theta))).T
     return np.dot(points, rotation_matrix)
 
+#calcola la distanza euclidea
+# richiamata da calc_pairwise_distances (math_utils.py)
 
+#Calcola la distanza euclidea per ogni coppia di punti nella matrice quadrara, per ogni punto in X ad ogni punto in Y
 @my_njit
 def my_cdist_sq_euclidean(arr_a: np.ndarray, arr_b: np.ndarray) -> np.ndarray:
     """
@@ -131,18 +141,46 @@ def my_cdist_sq_euclidean(arr_a: np.ndarray, arr_b: np.ndarray) -> np.ndarray:
         np.array: A matrix of shape (m,n) containing the square euclidean distance
         between all the points in `X` and `Y`
     """
+
+    # uses a matric moltiplication trick
+    # invece di iterare esplicitamente tra coppie di punti, la funzione
+    # vettorizza questa operazione utilizzando algebra lineare
+
+    # prende le dimensioni
+    # n_x = numero di punti nel vettore a
+    # dim = dimensione di ogni punto
     n_x, dim = arr_a.shape
+
+    # costruisce una nuova matrice di dimensione nx * 3dim
     x_ext = np.empty((n_x, 3 * dim))
+
+    # prima colonna sono tutti 1
     x_ext[:, :dim] = 1
+
+    # seconde colonne: salvataggio arr_a (usato per il dot product term)
     x_ext[:, dim : 2 * dim] = arr_a
+
+    # utlime colonne: valori alla seconda
     x_ext[:, 2 * dim :] = np.square(arr_a)
 
+    # n_y = numero di punti del vettore b
     n_y = arr_b.shape[0]
+
+    # costruisce nuova matrice di dimensione 3dim * ny
     y_ext = np.empty((3 * dim, n_y))
+    # stessa cosa di x_ext ma con le righe
+
+    # prime righe: valori alla seconda
     y_ext[:dim] = np.square(arr_b).T
+
+    # seconde righe: -2*arr_B
     y_ext[dim : 2 * dim] = -2 * arr_b.T
+
+    # ultime righe: tutti 1
     y_ext[2 * dim :] = 1
 
+    # ritorna matrice ottenuta dalla moltiplicazione di x_ext e y_ext (matrice mxn):
+    # ogni entri (i, j) è la distanza euclidea quadrata tra i due array arr_a[i] e arr_b[j]
     return np.dot(x_ext, y_ext)
 
 
@@ -161,19 +199,25 @@ def calc_pairwise_distances(
     Returns:
         np.ndarray: The 2d distance matrix
     """
+
+    # matrice distanze di dimensione mxn ottenuta con moltiplicazione di algebra lineare
     pairwise_distances = my_cdist_sq_euclidean(points, points)
 
     if dist_to_self != 0:
+        # setta tutti 0 sulla diagonale, poichè elementi sulla diagonale
+        # rappresentano distanza tra un punto e se stesso
         for i in range(len(points)):
             pairwise_distances[i, i] = dist_to_self
+
+    # ritorna matrice quadrata
     return pairwise_distances
 
-
+# chiamata da neighbor_mask_can_be_added_to_attempt
 @my_njit
 def my_in1d(test_values: np.ndarray, source_container: np.ndarray) -> np.ndarray:
     """
     Calculate a boolean mask for a 1d array indicating if an element in `test_values` is
-    present in `source container` which is also 1d
+    present in `source container` which is also 1d(im)
 
     Args:
         test_values (np.ndarray): The values to test if they are inside the container
@@ -183,9 +227,16 @@ def my_in1d(test_values: np.ndarray, source_container: np.ndarray) -> np.ndarray
         np.ndarray: A boolean array with the same length as `test_values`. If
         `return_value[i]` is `True` then `test_value[i]` is in `source_container`
     """
+    # ordina il container mediante sort
     source_sorted = np.sort(source_container)
+
+    # array di zero che ha dimensione come test_values
     is_in = np.zeros(test_values.shape[0], dtype=np.bool_)
-    for i, test_val in enumerate(test_values):
+
+    # per ogni valore all'interno 
+    # enumerate(): takes a collection (e.g. a tuple) and returns it as an enumerate object
+
+    for i, test_val in enumerate(test_values): # crea oggetto enumerativo dai valori passati da testare
         for source_val in source_sorted:
             if test_val == source_val:
                 is_in[i] = True
@@ -194,9 +245,10 @@ def my_in1d(test_values: np.ndarray, source_container: np.ndarray) -> np.ndarray
             if source_val > test_val:
                 break
 
+    # ritorna array booleani
     return is_in
 
-
+#  circocentro
 def trace_calculate_consecutive_radii(trace: np.ndarray) -> np.ndarray:
     """
     Expects a (n,2) array and returns the radius of the circle that passes
@@ -217,7 +269,8 @@ def trace_calculate_consecutive_radii(trace: np.ndarray) -> np.ndarray:
     radii = calculate_radius_from_points(points)
     return radii
 
-
+# richiamato da calc_distance_cost
+# (cone_distance_cost.py)
 def trace_distance_to_next(trace: np.ndarray) -> np.ndarray:
     """
     Calculates the distance of one point in the trace to the next. Obviously the last
@@ -231,7 +284,7 @@ def trace_distance_to_next(trace: np.ndarray) -> np.ndarray:
     """
     return np.linalg.norm(np.diff(trace, axis=-2), axis=-1)
 
-
+# confronto mediante angoli
 def trace_angles_between(trace: np.ndarray) -> np.ndarray:
     """
     Calculates the angles in a trace from each point to its next
@@ -273,6 +326,9 @@ def unit_2d_vector_from_angle(rad: np.ndarray) -> np.ndarray:
 # TODO: Look into fixing return type when a single vector is provided (return float)
 @my_njit
 def angle_from_2d_vector(vecs: np.ndarray) -> np.ndarray:
+    # funzione generica per qualsiasi cosa gli passo
+    # vecs è un array contenente vettori 2d e restituisce l'angolo del vettore
+    # rispetto all'asse x positivo
     """
     Calculates the angle of each vector in `vecs`. If `vecs` is just a single 2d vector
     then one angle is calculated and a scalar is returned
@@ -291,16 +347,22 @@ def angle_from_2d_vector(vecs: np.ndarray) -> np.ndarray:
     Returns:
         np.array: The angle of each vector in `vecs`
     """
+    # controllo che il vettore 2d abbia due elementi (x, y)
     assert vecs.shape[-1] == 2, "vecs must be a 2d vector"
 
+    # reshape per assicurarsi che vecs sia trattato come lista di coppie
     vecs_flat = vecs.reshape(-1, 2)
 
+    # calcolo dell'angolo
     angles = np.arctan2(vecs_flat[:, 1], vecs_flat[:, 0])
+
+    # angolo risultato riportato nella stessa forma del vettore originale
     return_value = angles.reshape(vecs.shape[:-1])
 
     # if vecs.ndim == 1:
     #     return return_value[0]
 
+    # ritorno valore in og form, in radianti
     return return_value
 
 
@@ -321,7 +383,7 @@ def normalize_last_axis(vecs: np.ndarray) -> np.ndarray:
 
     return out.reshape(vecs.shape)
 
-
+# interpolazione
 @my_njit
 def lerp(
     values_to_lerp: np.ndarray,
@@ -353,7 +415,7 @@ def lerp(
     """
     return (values_to_lerp - start1) / (stop1 - start1) * (stop2 - start2) + start2
 
-
+#usato da trace_calculate_radii
 def calculate_radius_from_points(points: np.ndarray) -> np.ndarray:
     """
     Given a three points this function calculates the radius of the circle that passes

@@ -120,7 +120,7 @@ class ConeSorting:
 
     def run_cone_sorting(
         self,
-    ) -> Tuple[FloatArray, FloatArray]:
+    ) -> Tuple[FloatArray, FloatArray]: # ritorna array di coni sinistri e destri
         """
         Calculate the sorted cones.
 
@@ -130,11 +130,17 @@ class ConeSorting:
         """
         # make transition from set inputs to usable state variables
         self.transition_input_to_state()
+        # salvataggio degli inputs nelle variabili di stato della classe ConeSorting
 
+        # trace sorter è un'istanza di TraceSorter, modulo che permette di ordinare una traccia di coni una possibile track
         left_cones, right_cones = self.trace_sorter.sort_left_right(
-            self.state.cones_by_type_array,
-            self.state.position_global,
+            self.state.cones_by_type_array, # lista dei coni da stato dell'oggetto ConeSorting
+            self.state.position_global, # posizione e direzioni globali
             self.state.direction_global,
         )
+
+        # sort_left_right: all'interno di core_cone_sorting.py
+        # ritorna tuple[floatArray, FloatArray ]
+        # richiama: calc_configurations_with_score_for_one_side
 
         return left_cones, right_cones

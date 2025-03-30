@@ -76,6 +76,7 @@ class ConeMatching:
         """Save inputs from other software nodes in variable."""
         self.input = cone_matching_input
 
+
     def transition_input_to_state(self) -> None:
         """Parse and save the inputs in state variable."""
         self.state.position_global, self.state.direction_global = (
@@ -98,6 +99,8 @@ class ConeMatching:
                 The indices of the matches of the left cones for each right cone.
 
         """
+
+        # SALVATAGGIO INPUT NELLE VARIABILI DI STATO
         self.transition_input_to_state()
 
         major_radius = self.state.max_search_range * 1.5
@@ -106,7 +109,7 @@ class ConeMatching:
         (
             (left_cones_with_virtual, _, left_to_right_match),
             (right_cones_with_virtual, _, right_to_left_match),
-        ) = calculate_virtual_cones_for_both_sides(
+        ) = calculate_virtual_cones_for_both_sides( # calcola configurazione con coni veri e virtuali
             self.state.sorted_left,
             self.state.sorted_right,
             self.state.position_global,

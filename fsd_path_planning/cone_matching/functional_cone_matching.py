@@ -77,7 +77,8 @@ def cones_in_range_and_pov_mask(
     return_value: BoolArray = visible_cones_mask
     return return_value
 
-
+# richiamato da calculate_matches_for_side
+# (functional_cone_matching.py)
 def find_boolean_mask_of_all_potential_matches(
     start_points: FloatArray,
     directions: FloatArray,
@@ -91,21 +92,25 @@ def find_boolean_mask_of_all_potential_matches(
     Calculate a (M,N) boolean mask that indicates for each cone in the cones array
     if a cone on the other side can be match or not.
     """
-
+    # matrice righe: matchable_cones, colonne: other_side_cones
     return_value = np.zeros((len(start_points), len(other_side_cones)), dtype=bool)
     if len(start_points) == 0 or len(other_side_cones) == 0:
         return return_value
 
     # return mask_all
 
-    # (2,)
+    # (2,) raggi alla seconda
     radii_square = np.array([major_radius, minor_radius]) ** 2
 
-    # (M,)
+    # (M,) math_utils.py
     angles = angle_from_2d_vector(directions)
+
+    # ogni elemento rappresenta la differenza vettoriale tra un punto iniziale e tutti i coni dell’altro lato.
     # (M, N, 2)                       (N, 2)             (M, 1, 2)
     from_start_points_to_other_side = other_side_cones - start_points[:, None]
 
+    # other_side_cones: N=numero coni, 2= dimensioni coni (x,y)
+    # start_points: da Mx2 (numero conix dimensioni x,y)  1 dimensione extra -> M, 1, 2
     start_point_direction_other_side_direction_angle_diff = vec_angle_between(
         directions[:, None], other_side_directions
     )
@@ -115,13 +120,14 @@ def find_boolean_mask_of_all_potential_matches(
         angle,
         angle_diff_start_direction_other_direction,
     ) in enumerate(
-        zip(
+        zip( # oggetto per iterazione su tuple
             from_start_points_to_other_side,
             angles,
             start_point_direction_other_side_direction_angle_diff,
         )
     ):
         # (N, 2)
+        # cambio di coordinate rispetto all'altro lato
         rotated_start_point_to_other_side = rotate(
             start_point_to_other_side_cones, -angle
         )
@@ -130,6 +136,7 @@ def find_boolean_mask_of_all_potential_matches(
         s = (rotated_start_point_to_other_side**2 / radii_square).sum(axis=1)
         return_value[i] = s < 1
 
+        # angolo cono iniziale rispetto ad altro lato
         angle_of_rotated_start_point_to_other_side = angle_from_2d_vector(
             rotated_start_point_to_other_side
         )
@@ -145,30 +152,36 @@ def find_boolean_mask_of_all_potential_matches(
         return_value[i, mask_angle_is_over_threshold] = False
         return_value[i, mask_direction_diff_over_threshold] = False
 
+    # per tutti i coni trova candidati vicini
     for i, (mask_cone_to_candidates, distance_to_other_side) in enumerate(
-        zip(return_value, np.linalg.norm(from_start_points_to_other_side, axis=-1))
+        zip(return_value, np.linalg.norm(from_start_points_to_other_side, axis=-1)) # distanza euclidea su ultima dimensione
     ):
-        distance_to_other_side[~mask_cone_to_candidates] = np.inf
-        idxs_candidates_sorted = np.argsort(distance_to_other_side)[:2]
+        distance_to_other_side[~mask_cone_to_candidates] = np.inf # mette ad infinito i falsi
+        idxs_candidates_sorted = np.argsort(distance_to_other_side)[:2] # prende i più vicini (2)
         mask_idx_candidate_is_valid = np.isfinite(
             distance_to_other_side[idxs_candidates_sorted]
         )
+
+        # prende solo i validi tra quelli vicini
         idxs_candidates_sorted = idxs_candidates_sorted[mask_idx_candidate_is_valid]
 
-        new_mask = np.zeros_like(mask_cone_to_candidates)
-        new_mask[idxs_candidates_sorted] = True
-        return_value[i] = new_mask
+        new_mask = np.zeros_like(mask_cone_to_candidates) # array vuoto con stesse dimensioni di quello dato
+        new_mask[idxs_candidates_sorted] = True 
+
+        # associa la maschera di validità dei candidati vicini al return value con l'indice i
+        return_value[i] = new_mask 
 
     return return_value
 
-
+# richiamata da calculate_matches_for_side
+# (func)
 def select_best_match_candidate(
     matchable_cones: FloatArray,
     match_directions: FloatArray,
-    match_boolean_mask: BoolArray,
+    match_boolean_mask: BoolArray, # us_to_others_match_cones_mask
     other_side_cones: FloatArray,
-    matches_should_be_monotonic: bool,
-) -> IntArray:
+    matches_should_be_monotonic: bool, # true, corrispondenza 1:1
+) -> IntArray: # 
     """
     For each cone select a matching cone from the other side. If a cone has no potential
     match, it is marked with -1.
@@ -179,7 +192,7 @@ def select_best_match_candidate(
 
     matched_index_for_each_cone: IntArray = my_cdist_sq_euclidean(
         matchable_cones, other_side_cones
-    ).argmin(axis=1)
+    ).argmin(axis=1) # prende cono con minore distanza euclidea dal current
 
     if matches_should_be_monotonic:
         # constraint matches to be monotonic
@@ -191,15 +204,15 @@ def select_best_match_candidate(
             else:
                 matched_index_for_each_cone[i] = current_max_value
 
-    matched_index_for_each_cone[~match_boolean_mask.any(axis=1)] = -1
+    matched_index_for_each_cone[~match_boolean_mask.any(axis=1)] = -1 
     return matched_index_for_each_cone
 
-
+# richiamato da calculate_cones_for_other_side
 def calculate_positions_of_virtual_cones(
-    cones: FloatArray,
-    indices_of_unmatched_cones: IntArray,
-    search_directions: FloatArray,
-    min_track_width: float,
+    cones: FloatArray,                      # matchable_cones
+    indices_of_unmatched_cones: IntArray,   # indici dei coni senza match reale
+    search_directions: FloatArray,          # direzioni
+    min_track_width: float,                 # dipende da regolamento
 ) -> FloatArray:
     """
     Calculate the positions of the virtual cones given the unmatched cones and the
@@ -207,17 +220,17 @@ def calculate_positions_of_virtual_cones(
     """
 
     return_value: FloatArray = (
-        cones[indices_of_unmatched_cones]
-        + search_directions[indices_of_unmatched_cones] * min_track_width
+        cones[indices_of_unmatched_cones] #cono senza match
+        + search_directions[indices_of_unmatched_cones] * min_track_width # direzione
     )
     return return_value
 
-
+# richiamato da combine_and_sort_virtual_with_real
 def insert_virtual_cones_to_existing(
     other_side_cones: FloatArray,
-    other_side_virtual_cones: FloatArray,
+    other_side_virtual_cones: FloatArray, # posizione dei possibili coni virtuali
     car_position: FloatArray,
-) -> tuple[FloatArray, list[FloatArray]]:
+) -> tuple[FloatArray, list[FloatArray]]: #sorted cones, history
     """
     Combine the virtual with the real cones into a single array.
     """
@@ -232,6 +245,7 @@ def insert_virtual_cones_to_existing(
 
     order_to_insert = (
         my_cdist_sq_euclidean(cones_to_insert, existing_cones).min(axis=1).argsort()
+        # returns the indices that would sort the array
     )
     cones_to_insert = cones_to_insert[order_to_insert]
 
@@ -243,28 +257,49 @@ def insert_virtual_cones_to_existing(
         )
         indices_sorted_by_distances = distance_to_existing_cones.argsort()
 
+          """
+        Insert a virtual cone into the real cones, when only one real cone is available.
+        The position of the virtual cone in the array is based on distance to the car.
+        """
         if len(indices_sorted_by_distances) == 1:
-            index_to_insert = calculate_insert_index_for_one_cone(
+            index_to_insert = calculate_insert_index_for_one_cone( # ritorna 0 o 1 in base al quale dei due coni mettere
+            # in base a distanza dal cono (norm)
                 car_position, existing_cones, cone_to_insert
             )
         else:
+            """
+            For each cone in the other cone list
+            Find the two closest cones in the base cone list
+            If the two cones are not consecutive, skip this candidate
+            If the angle formed by putting the cone between the two closest cones, is large enough, add it to the base cone list, between the two closest cones
+            If not add it before both of them or after both of them, depending on the configuration.
+            """
             closest_index, second_closest_index = indices_sorted_by_distances[:2]
 
             if np.abs(closest_index - second_closest_index) != 1:
                 continue
 
+            # vettore distanza tra cono + vicino al candidato, e quello virtuale
             virtual_to_closest = existing_cones[closest_index] - cone_to_insert
+            # stessa cosa per l'altro
             virtual_to_second_closest = (
                 existing_cones[second_closest_index] - cone_to_insert
             )
+
+            # calcolo angolo tra vettori
             angle_between_virtual_cones_and_closest_two = vec_angle_between(
                 virtual_to_closest, virtual_to_second_closest
             )
 
+            # se l'angolo tra i due coni più vicini è abbastanza grande, inserisce il cono virtuale
             cone_is_between_closest_two = cast(
                 bool, angle_between_virtual_cones_and_closest_two > np.pi / 2
             )
-
+            """
+            Decide the index of the new cone to insert. It is based on the distance to the
+            two closest cones and the angle that is formed between them.
+            """ 
+            # indice 
             index_to_insert = calculate_insert_index_of_new_cone(
                 closest_index,
                 second_closest_index,
@@ -286,19 +321,23 @@ def insert_virtual_cones_to_existing(
     mask_low_angles = np.concatenate([[False], mask_low_angles, [False]])
 
     if mask_low_angles.any():
+        # prendo tutti i coni con angoli abbastanza grandi
         existing_cones = existing_cones[:][~mask_low_angles]
         history.append(existing_cones.copy())
 
     return existing_cones, history
 
-
+# richiamato da insert_virtual_cones_to_existing
 def calculate_insert_index_for_one_cone(
+    # car_position, existing_cones, cones_to_insert
     car_position: FloatArray, final_cones: FloatArray, virtual_cone: FloatArray
 ) -> int:
     """
     Insert a virtual cone into the real cones, when only one real cone is available.
     The position of the virtual cone in the array is based on distance to the car.
     """
+
+    # vettori
     distance_to_car_other_cone: float = np.linalg.norm(
         virtual_cone - car_position,
     )  # type: ignore
@@ -312,7 +351,7 @@ def calculate_insert_index_for_one_cone(
         index_to_insert = 1
     return index_to_insert
 
-
+# richiamata da insert_virtual_cones_to_existing
 def calculate_insert_index_of_new_cone(
     closest_index: int,
     second_closest_index: int,
@@ -334,9 +373,10 @@ def calculate_insert_index_of_new_cone(
             raise ValueError("Unreachable code")
 
 
+# richiamato da calculate_cones_for_other_side
 def combine_and_sort_virtual_with_real(
     other_side_cones: FloatArray,
-    other_side_virtual_cones: FloatArray,
+    other_side_virtual_cones: FloatArray, # posizione dei possibili coni virtuali
     other_side_cone_type: SortableConeTypes,  # pylint : disable=unused-argument
     car_pos: FloatArray,
     car_dir: FloatArray,  # pylint: disable=unused-argument
@@ -355,21 +395,27 @@ def combine_and_sort_virtual_with_real(
     if len(other_side_virtual_cones) == 0:
         return other_side_cones, np.zeros(len(other_side_cones), dtype=bool), []
 
+
+    # coni reali e virtuali secondo distanze, ordinati, e la history 
     sorted_combined_cones, history = insert_virtual_cones_to_existing(
         other_side_cones, other_side_virtual_cones, car_pos
     )
 
     # cones than have a distance larger than epsilon to the existing cones are virtual
+    # calcola le distanze con tutti i coni compresi quelli virtuali
     distance_of_final_cones_to_existing = my_cdist_sq_euclidean(
         sorted_combined_cones, other_side_cones
     )
     epsilon = 1e-2
+
+    # fa distanza per prendere coni singola volta 
     virtual_mask: BoolArray = distance_of_final_cones_to_existing > epsilon**2
     mask_is_virtual: BoolArray = np.all(virtual_mask, axis=1)
 
     return sorted_combined_cones, mask_is_virtual, history
 
-
+# richiamato da calculate_cones_for_other_side
+# functional_cone_sorting.py
 def calculate_matches_for_side(
     cones: FloatArray,
     cone_type: ConeTypes,
@@ -384,16 +430,18 @@ def calculate_matches_for_side(
     """
     matchable_cones = cones[:]
     if len(matchable_cones) > 1:
+        # search_directions = matrice di righe number_of_cones e due colonne (x, y)
         search_directions = calculate_match_search_direction(matchable_cones, cone_type)
 
         if len(other_side_cones) > 1:
-            other_side_search_directions = calculate_match_search_direction(
+            other_side_search_directions = calculate_match_search_direction( # 
                 other_side_cones,
                 ConeTypes.LEFT if cone_type == ConeTypes.RIGHT else ConeTypes.RIGHT,
             )
         else:
             other_side_search_directions = np.zeros((0, 2), dtype=float)
         us_to_others_match_cones_mask = find_boolean_mask_of_all_potential_matches(
+            # calcola a (M,N) boolean mask che indica per ogni cono se gli altri coni sono un match oppure no
             matchable_cones,
             search_directions,
             other_side_cones,
@@ -402,8 +450,12 @@ def calculate_matches_for_side(
             minor_radius,
             max_search_angle,
         )
-
-        matches_for_each_selectable_cone = select_best_match_candidate(
+        # seleziona un matching
+        """
+        For each cone select a matching cone from the other side. If a cone has no potential
+        match, it is marked with -1.
+        """
+        matches_for_each_selectable_cone = select_best_match_candidate( #int array
             matchable_cones,
             search_directions,
             us_to_others_match_cones_mask,
@@ -414,11 +466,11 @@ def calculate_matches_for_side(
         matches_for_each_selectable_cone = (
             np.zeros((len(matchable_cones),), dtype=np.int32) - 1
         )
-        search_directions = np.zeros((0, 2))
+        search_directions = np.zeros((0, 2)) # matrice vuota
 
     return matchable_cones, matches_for_each_selectable_cone, search_directions
 
-
+# richiamato da calculate_virtual_cones_for_both_sides
 def calculate_cones_for_other_side(
     cones: FloatArray,
     cone_type: ConeTypes,
@@ -438,7 +490,7 @@ def calculate_cones_for_other_side(
         matchable_cones,
         matches_for_each_selectable_cone,
         search_directions,
-    ) = calculate_matches_for_side(
+    ) = calculate_matches_for_side( # Find a match for each cone from one side to the other.
         cones,
         cone_type,
         other_side_cones,
@@ -451,6 +503,12 @@ def calculate_cones_for_other_side(
     # indices_to_keep = np.where(mask_cone_has_match)[0]
     indices_no_match = np.where(~mask_cone_has_match)[0]
 
+    """
+    Calculate the positions of the virtual cones given the unmatched cones and the
+    direction of the match search.
+    """
+
+    # ritorna vettore
     positions_of_virtual_cones = calculate_positions_of_virtual_cones(
         matchable_cones, indices_no_match, search_directions, min_track_width
     )
@@ -460,6 +518,8 @@ def calculate_cones_for_other_side(
     )
 
     # we do not care about the history in prod, only for debugging/visualization
+    # ritorna: ) -> Tuple[FloatArray, BoolArray, list[FloatArray]]:
+    # coni sorted, maschera che indica se cono real o virtuale e history
     combined_and_sorted_cones, mask_is_virtual, _ = combine_and_sort_virtual_with_real(
         other_side_cones,
         positions_of_virtual_cones,
@@ -474,7 +534,7 @@ def calculate_cones_for_other_side(
 
     return combined_and_sorted_cones, mask_is_virtual
 
-
+# richiamata da calculate_virtual_cones_for_both_sides
 def match_both_sides_with_virtual_cones(
     left_cones_with_virtual: FloatArray,
     right_cones_with_virtual: FloatArray,
@@ -510,7 +570,8 @@ def match_both_sides_with_virtual_cones(
 
     return final_matching_from_left_to_right, final_matching_from_right_to_left
 
-
+# richiamato da run_cone_matching
+# (core_cone_matching.py)
 def calculate_virtual_cones_for_both_sides(
     left_cones: FloatArray,
     right_cones: FloatArray,
@@ -522,8 +583,9 @@ def calculate_virtual_cones_for_both_sides(
     max_search_angle: float,
     matches_should_be_monotonic: bool = True,
 ) -> Tuple[
-    Tuple[FloatArray, BoolArray, IntArray],
-    Tuple[FloatArray, BoolArray, IntArray],
+    Tuple[FloatArray, BoolArray, IntArray], 
+    # cono (x,y), flag x indicare se è cono vero o virtuale, indice del cono dell'altro lato con cui è matched
+    Tuple[FloatArray, BoolArray, IntArray], # stessa cosa per destra
 ]:
     """
     The main function of the module. It applies all the steps to return two results
@@ -539,7 +601,7 @@ def calculate_virtual_cones_for_both_sides(
 
     dummy_result = empty_cone_array, empty_bool_array, empty_int_array
 
-    ic("calculate_virtual_cones_for_both_sides: start")
+    ic("calculate_virtual_cones_for_both_sides: start") # ice cream x debug
     if len(left_cones) < 2 and len(right_cones) < 2:
         left_result = dummy_result
         right_result = dummy_result
@@ -554,6 +616,8 @@ def calculate_virtual_cones_for_both_sides(
         else:
             right_cones = empty_cone_array
 
+    # calcolo configurazione con coni sia reali che virtuali, ordinati in base alla distanza
+    # sia per lato destro che per lato sinistro
     ic("calculate_virtual_cones_for_both_sides: left match right")
     right_mask_is_virtual: BoolArray
     right_cones_with_virtual, right_mask_is_virtual = (
@@ -568,7 +632,8 @@ def calculate_virtual_cones_for_both_sides(
             car_position,
             car_direction,
             matches_should_be_monotonic,
-        )
+        ) # ritorna    matchable_cones, matches_for_each_selectable_cone, search_directions
+        # coni, match per ogni cono, direzioni 
         if len(left_cones) >= 2
         else (
             right_cones,
@@ -599,6 +664,12 @@ def calculate_virtual_cones_for_both_sides(
     )
 
     ic("calculate_virtual_cones_for_both_sides: match left and right w/ virtual")
+    """
+    After virtual cones have been placed for each side, rerun matching algorithm
+    to get final matches.
+    """
+
+    # Per fare il matching finale, richiama nuovamente "calculate_matches_for_side"
     left_to_right_matches, right_to_left_matches = match_both_sides_with_virtual_cones(
         left_cones_with_virtual,
         right_cones_with_virtual,

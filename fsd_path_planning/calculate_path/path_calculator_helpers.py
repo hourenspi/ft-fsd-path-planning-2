@@ -24,6 +24,8 @@ class PathCalculatorHelpers:
 
     HALF_PI = np.pi / 2
 
+    # richiamata da calculate_almost_straight_path
+    # (path_calculator_helpers.py)
     def calculate_chord_path(
         self, radius: float, maximum_angle: float, number_of_points: int
     ) -> FloatArray:
@@ -43,7 +45,7 @@ class PathCalculatorHelpers:
             # create points on a circle
             unit_2d_vector_from_angle(
                 np.linspace(0, np.abs(maximum_angle), number_of_points)
-            )
+            ) # linspace: generates an array of num evenly spaced samples, over range [start, stop]
         )
         # rotate so initial points, point to the right
         points_centered: FloatArray = points - [1, 0]  # bring x axis to center
@@ -54,6 +56,8 @@ class PathCalculatorHelpers:
         points_centered_scaled_rotated[:, 1] *= np.sign(maximum_angle)
         return points_centered_scaled_rotated
 
+    # richiamato da calculate_trivial_path
+    # (core_calculate_path.py)
     def calculate_almost_straight_path(self) -> FloatArray:
         """
         Calculate a chord path with a very high radius and a very small chord angle.

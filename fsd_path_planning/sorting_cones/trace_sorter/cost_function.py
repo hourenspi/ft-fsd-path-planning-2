@@ -19,24 +19,45 @@ from fsd_path_planning.utils.cone_types import ConeTypes
 from fsd_path_planning.utils.math_utils import angle_difference, vec_angle_between
 from fsd_path_planning.utils.utils import Timer
 
-
+# richiamata da calc_angle_cost_for_configuration
+# restituisce array di float con gli angoli
 def calc_angle_to_next(points: FloatArray, configurations: IntArray) -> FloatArray:
     """
     Calculate the angle from one cone to the previous and the next one for all
     the provided configurations
     """
+
+    # (common.py):
+    # ritorna un array con le differenza tra ogni punto e il seguente
+    # per ogni configurazione
     all_to_next = get_configurations_diff(points, configurations)
 
-    mask_should_overwrite = (configurations == -1)[:, 1:]
-    all_to_next[mask_should_overwrite] = 100
+    # crea un array con lo stesso shape di configurations
+    # dove ogni elemento è true se -1, altrimenti false
 
-    from_middle_to_next = all_to_next[..., 1:, :]
+    # prende tutte le righe (:) ma esclude la prima colonna(1:)
+    mask_should_overwrite = (configurations == -1)[:, 1:]
+
+    all_to_next[mask_should_overwrite] = 100
+    
+    # from_middle_to_next represents the difference between each point and the next
+    # from_prev_to_middle represents the difference between each point and the previous point
+    from_middle_to_next = all_to_next[..., 1:, :] 
+    # prende tutto tranne la prima riga
+    # della seconda dimensione (3 dim)
+
     from_prev_to_middle = all_to_next[..., :-1, :]
+    # prende tutte tranne l'ultima riga della seconda dimensione
     from_middle_to_prev = -from_prev_to_middle
 
+    # calcola l'angolo tra due vettori
+    # (math_utils.py)
     angles = vec_angle_between(from_middle_to_next, from_middle_to_prev)
     return angles
 
+# richiamata da cost_configurations
+# (cost_function.py)
+# cone_type: unused
 
 def calc_angle_cost_for_configuration(
     points: FloatArray,
@@ -49,34 +70,47 @@ def calc_angle_cost_for_configuration(
     Args:
         points: The points to be used
         configurations: An array of indices defining the configurations
-        cone_type: The type of cones. It is currently unused
+        cone_type: The type of cones. It is currently unused --(rimovibile)
     Returns:
         np.array: The score of each configuration
     """
 
-    angles = calc_angle_to_next(points, configurations)
+    angles = calc_angle_to_next(points, configurations) #float array
 
+    # prende tutte le righe e le colonne dalla seconda in poi
+    # array boolean 2d, con True per le configurazioni valide div. da -1
     is_part_of_configuration = (configurations != -1)[:, 2:]
 
     # invert angles and normalize between [0-1]
     angles_as_cost = (np.pi - angles) / np.pi
 
+    # where configurations == -1, the corresponding angle cost is set to 0 (because multiplying by 0) -> no impact on the result
+    # where configurations != -1, the corresponding angle cost remains unchanged.
     angles_as_cost_filtered = angles_as_cost * is_part_of_configuration
+
+    # This creates a boolean array (angles_are_under_threshold), where True means the angle 
+    # is under the threshold and the configuration is valid.
 
     angles_are_under_threshold = np.logical_and(
         angles < np.deg2rad(40), is_part_of_configuration
     )
 
     # we will multiply the score by the number of angles that are under the threshold
+    # axis: The axis along which we want to calculate the sum value. Otherwise, it will consider arr to be flattened(works on all the axes). axis = 0 means along the column and axis = 1 means working along the row. 
+    # axis=-1 : ultima dimensione dell'array.
+    # counts how many angles in each configuration are below the threshold of 40°.
     cost_factors = angles_are_under_threshold.sum(axis=-1) + 1
 
     # get sum of costs
+    # somma in ultima dimensione
+    # sums each row of the filtered costs
+    # e lo divide per il numero di configurazioni valide
     costs: FloatArray = angles_as_cost_filtered.sum(
         axis=-1
     ) / is_part_of_configuration.sum(axis=-1)
 
     costs = costs * cost_factors
-    return costs
+    return costs # array di float col costo relativo ogni configurazione
 
 
 def calc_number_of_cones_cost(configurations: IntArray) -> FloatArray:
@@ -194,6 +228,8 @@ def calc_cones_on_either_cost(
     cone_type: SortableConeTypes,
 ) -> FloatArray:
     with Timer("calc_cones_on_either_cost", noprint=True) as _:
+        # ritorna A tuple of two arrays, the first is the number of cones on the correct side of
+        # the track, the second is the number of cones on the wrong side of the track.
         n_good, n_bad = number_cones_on_each_side_for_each_config(
             points,
             configurations,
@@ -209,7 +245,8 @@ def calc_cones_on_either_cost(
 
     return 1 / diff
 
-
+# richiamato dentro a calc_scores_and_end_configurations
+# (find_configs_and_scores.py)
 def cost_configurations(
     points: FloatArray,
     configurations: IntArray,
@@ -229,6 +266,7 @@ def cost_configurations(
     Returns:
         A cost for each configuration
     """
+    # rimuove tipo dai coni
     points_xy = points[:, :2]
 
     # print(len(configurations))
@@ -241,17 +279,21 @@ def cost_configurations(
 
     not timer_no_print and print(cone_type)
 
+    # calcolo costi riferiti agli angoli per ogni configurazione:
     with Timer("angle_cost", timer_no_print):
         angle_cost = calc_angle_cost_for_configuration(
             points_xy, configurations, cone_type
         )
 
+    # calcolo costi riferiti alle distanze per ogni configurazione:
     with Timer("residual_distance_cost", timer_no_print):
         threshold_distance = 3  # maximum allowed distance between cones is 5 meters
+        # ritorna array con costo distanze per ogni configurazione
         residual_distance_cost = calc_distance_cost(
             points_xy, configurations, threshold_distance
         )
 
+    # calcolo costi riferiti al numero di coni per ogni configurazione:
     with Timer("number_of_cones_cost", timer_no_print):
         number_of_cones_cost = calc_number_of_cones_cost(configurations)
 
@@ -261,16 +303,18 @@ def cost_configurations(
         )
         # initial_direction_cost = np.zeros(configurations.shape[0])
 
+    # calcolo costi riferiti al cambio direzione per ogni configurazione:
     with Timer("change_of_direction_cost", timer_no_print):
         change_of_direction_cost = calc_change_of_direction_cost(
             points_xy, configurations
-        )
+        ) # floatarray, A cost for each configuration
 
     with Timer("cones_on_either_cost", timer_no_print):
         cones_on_either_cost = calc_cones_on_either_cost(
             points_xy, configurations, cone_type
         )
 
+    # calcolo costi riferiti all'errore direzione per ogni configurazione:
     with Timer("wrong_direction_cost", timer_no_print):
         wrong_direction_cost = calc_wrong_direction_cost(
             points_xy, configurations, cone_type
@@ -280,10 +324,16 @@ def cost_configurations(
 
     not timer_no_print and print()
 
+# calcolo del costo totale:
+# pesi diversi per ogni costo: 
     factors: FloatArray = np.array([1000.0, 200.0, 5000.0, 1000.0, 0.0, 1000.0, 1000.0])
-    factors = factors / factors.sum()
+
+    # normalizza i factors:
+    # the sum of the factors will be 1, making each factor a relative weight for each cost component. 
+    factors = factors / factors.sum() # percentuale?
     # print(configurations)
     final_costs = (
+        # Stack 1-D arrays as columns into a 2-D array
         np.column_stack(
             [
                 angle_cost,

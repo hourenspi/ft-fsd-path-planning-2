@@ -125,10 +125,11 @@ class CalculatePath:
         """Update the state of the calculation."""
         self.input = new_input
 
+    # richiamato da run_path_calculation
     def calculate_trivial_path(self) -> FloatArray:
         "Calculate a path that points straight from the car position and direction"
         origin_path = self.path_calculator_helpers.calculate_almost_straight_path()[1:]
-        yaw = angle_from_2d_vector(self.input.direction_global)
+        yaw = angle_from_2d_vector(self.input.direction_global) # math_utils.py
         path_rotated: FloatArray = rotate(origin_path, yaw)  # type: ignore
 
         final_trivial_path: FloatArray = path_rotated + self.input.position_global
@@ -148,13 +149,15 @@ class CalculatePath:
         )
         return_value: int = np.sum(matches_of_side != -1)
         return return_value
-
+    
+    # richiamato da select_side_to_uses
     def side_score(self, side: ConeTypes) -> tuple:
         matches_of_side = (
             self.input.left_to_right_matches
             if side == ConeTypes.LEFT
             else self.input.right_to_left_matches
         )
+        # prende solo i match validi
         matches_of_side_filtered = matches_of_side[matches_of_side != -1]
         n_matches = len(matches_of_side_filtered)
         n_indices_sum = matches_of_side_filtered.sum()
@@ -163,9 +166,12 @@ class CalculatePath:
         # where the indices increase the most
         return n_matches, n_indices_sum
 
+
+    # richiamato da run_path_calculation
     def select_side_to_use(self) -> Tuple[FloatArray, IntArray, FloatArray]:
         "Select the main side to use for path calculation"
 
+        # selezione tra i due lati in base a numero di match e distanza da primo cono
         side_to_pick = max([ConeTypes.LEFT, ConeTypes.RIGHT], key=self.side_score)
 
         side_to_use, matches_to_other_side, other_side_cones = (
@@ -183,6 +189,7 @@ class CalculatePath:
         )
         return side_to_use, matches_to_other_side, other_side_cones
 
+    # richiamata da run_path_calculation
     def calculate_centerline_points_of_matches(
         self,
         side_to_use: FloatArray,
@@ -205,6 +212,7 @@ class CalculatePath:
 
         return center_along_match_connection
 
+    # richiamato da run_path_calculation
     def fit_matches_as_spline(
         self, center_along_match_connection: FloatArray
     ) -> FloatArray:
@@ -512,6 +520,8 @@ class CalculatePath:
         self.mpc_paths = self.mpc_paths[-10:] + [path_with_length_for_mpc]
         self.path_is_trivial_list = self.path_is_trivial_list[-10:] + [path_is_trivial]
 
+    # richiamato da calculate_path_in_global_frame
+    # (full_pipeline.py)
     def run_path_calculation(self) -> Tuple[FloatArray, FloatArray]:
         """Calculate path."""
         if self.input.global_path is not None:
@@ -534,25 +544,34 @@ class CalculatePath:
                 # extract x, y from previously calculated path
                 center_along_match_connection = self.previous_paths[-1][:, 1:3]
             else:
-                center_along_match_connection = self.calculate_trivial_path()
+                center_along_match_connection = self.calculate_trivial_path() # ritorna path quasi dritta
         elif self.input.global_path is None:
             (
                 side_to_use,
                 matches_to_other_side,
                 other_side_cones,
             ) = self.select_side_to_use()
+            #     def select_side_to_use(self) -> Tuple[FloatArray, IntArray, FloatArray]:
 
+            # prende i coni che fanno match sull'altro lato
             match_on_other_side = other_side_cones[matches_to_other_side]
 
+            # calcola i punti mediani tra il cono e il suo match sull'altro lato
             center_along_match_connection = self.calculate_centerline_points_of_matches(
                 side_to_use, matches_to_other_side, match_on_other_side
             )
-        # else:
-
+        # else: 
+        """
+        Fit the calculated basis path as a spline. If the computation fails, use the
+        path calculated in the previous step
+        """
         path_update_too_far_away = self.fit_matches_as_spline(
             center_along_match_connection
         )
-
+         """
+        If for some reason the calculated path is too far away from the position of the
+        car (e.g. because of a bad sorting), the previously calculated path is used
+        """
         path_update = self.overwrite_path_if_it_is_too_far_away(
             path_update_too_far_away
         )

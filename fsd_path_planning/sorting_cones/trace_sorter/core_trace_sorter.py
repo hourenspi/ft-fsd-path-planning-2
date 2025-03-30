@@ -32,7 +32,8 @@ from fsd_path_planning.utils.math_utils import (
 )
 from fsd_path_planning.utils.utils import Timer
 
-
+# rivedi bene funzione 
+# restituisce un float array
 def flatten_cones_by_type_array(cones_by_type: list[FloatArray]) -> FloatArray:
     """Ravel the cones_by_type_array"""
 
@@ -46,17 +47,32 @@ def flatten_cones_by_type_array(cones_by_type: list[FloatArray]) -> FloatArray:
     n_all_cones = sum(map(len, cones_by_type))
 
     # (x, y, color)
-    out = np.empty((n_all_cones, 3))
-    n_start = 0
-    for cone_type in ConeTypes:
-        n_cones = len(cones_by_type[cone_type])
+    out = np.empty((n_all_cones, 3)) # inizializza matrice vuota con n_cones_righe e 3 colonne
+    n_start = 0 # parte da 0
+    # cones by type avrà sempre 5 elementi e l'indice di ogni elementi
+    # corrisponde a tipo di coni di quella struttura dati (o=unknown, 1>=right, ecc)
+    for cone_type in ConeTypes: # per ogni tipo di cono in ConeTypes
+        n_cones = len(cones_by_type[cone_type]) # len ritorna numero di righe 
+        # matrice: righe = numero di coni di quel tipo
+        
+        # dalla riga 0 alla numero coni, prende le prime due colonne
+        # e gli associa il tipo dei coni
+        # fa reshape: cambia al shape dell'array
+        # passo -1 come dimensione sconosciuta
+        # shape 0 contiene numero di coni
+
+        # prende l'array unknown, tutti gli elementi e lo trasforma in una matrice a due dim 
+        # la cui seconda dimensione ha due colonne, e ? righe 
+
+        # Prende gli (x, y) dei coni di quel tipo e li assegna alle prime due colonne dell'array
+        # Assegna il valore cone_type alla terza colonna dell'array per etichettare i coni con il loro tipo.
         out[n_start : n_start + n_cones, :2] = cones_by_type[cone_type].reshape(-1, 2)
         out[n_start : n_start + n_cones, 2] = cone_type
         n_start += n_cones
 
-    return out
+    return out # ritorna matrice
 
-
+# confronto tra i due set di coni
 def cone_arrays_are_similar(
     cones: FloatArray | None,
     other_cones: FloatArray | None,
@@ -166,7 +182,7 @@ class TraceSorter:
         # cones_flat = cones_flat[mask_cones_close]
 
         with Timer("left config search", timer_no_print):
-            (
+            ( #costs, configs, history
                 left_scores,
                 left_configs,
                 left_first_cones,
@@ -179,9 +195,9 @@ class TraceSorter:
 
         with Timer("right config search", timer_no_print):
             (
-                right_scores,
-                right_configs,
-                right_first_cones,
+                right_scores, #costi
+                right_configs, # configurazioni
+                right_first_cones, #history
             ) = right_result = self.calc_configurations_with_score_for_one_side(
                 cones_flat,
                 ConeTypes.RIGHT,
@@ -197,6 +213,10 @@ class TraceSorter:
             right_result=right_result,
         )
 
+        # step di combinazione dei path sx e dx
+        # è in combine_traces
+
+        # trovo le configurazioni disponibili, col minor costo, e senza intersezioni tra le due
         (left_config, right_config) = calc_final_configs_for_left_and_right(
             left_scores,
             left_configs,
@@ -209,13 +229,27 @@ class TraceSorter:
         left_config = left_config[left_config != -1]
         right_config = right_config[right_config != -1]
 
+
         # remove any placeholder positions if they are present
         left_config = left_config[left_config != -1]
         right_config = right_config[right_config != -1]
 
+        # riduco a matriciona
         left_sorted = cones_flat[left_config]
         right_sorted = cones_flat[right_config]
 
+        """   
+    def sort_left_right(
+        self,
+        cones_by_type: list[FloatArray],
+        car_pos: FloatArray,
+        car_dir: FloatArray,
+    ) -> tuple[FloatArray, FloatArray]:
+        timer_no_print = True
+        cones_flat = flatten_cones_by_type_array(cones_by_type)
+        """
+
+        # ritorno: tutte le righe (tutte le configurazioni) e le prime due colonne (ovvero, x ed y, alsciando fuori il colore)
         return left_sorted[:, :2], right_sorted[:, :2]
 
     def input_is_very_similar_to_previous_input(
@@ -241,6 +275,8 @@ class TraceSorter:
         )
 
         # first we check if small array is similar
+        # cone_arrays_are_similar (core_trace_sorter) 
+        # ritorna booleano per il confronto tra i due set di coni
         previous_cones_similar = cone_arrays_are_similar(
             starting_cones, previous_starting_cones, threshold
         )
@@ -256,6 +292,10 @@ class TraceSorter:
         # if the large array is not similar, we need to redo the sorting
         return all_cones_are_similar
 
+
+    # chiamato pr coni di sx e poi per i coni di dx
+    # 
+    # 
     def calc_configurations_with_score_for_one_side(
         self,
         cones: FloatArray,
@@ -279,6 +319,10 @@ class TraceSorter:
         if len(cones) < 3:
             return no_result
 
+        # prende le stesse variabili in ordine diverso
+        # ritorna l'indeice dei due coni davanti e dietro
+        # select first k starting cones richiama la funzione
+        # select_starting_cones, che ritorna l'indice del cono di partenza
         first_k = self.select_first_k_starting_cones(
             car_pos,
             car_dir,
@@ -350,6 +394,7 @@ class TraceSorter:
 
         raise ValueError(f"Cone type {cone_type} cannot be inverted.")
 
+    # richiamato da calc_configurations_with_score_for_one_side
     def select_starting_cone(
         self,
         car_position: FloatArray,
@@ -362,6 +407,10 @@ class TraceSorter:
         Return the index of the starting cone
             int: The index of the stating cone
         """
+
+        # mask_cone prende la x e la y di tutti i coni
+        # rimuove il tipo di cono
+        # all'interno di questo stesso file
         trace_distances, mask_is_valid = self.mask_cone_can_be_first_in_config(
             car_position, car_direction, cones, cone_type
         )
@@ -369,11 +418,23 @@ class TraceSorter:
             mask_is_valid[index_to_skip] = False
 
         trace_distances_copy = trace_distances.copy()
+
+        # ~ -> unary operator
+        # invert or complement operation
+
+        # negazione bitwise -> inverte maschera booleana
+        # mette a infinito tutte le distanze che non ci interessano,
+        # quelle non valide secondo la maschera mask_is_valid 
         trace_distances_copy[~mask_is_valid] = np.inf
 
         if np.any(mask_is_valid) > 0:
+            # se mask_is_valid count > 0
+            # ordinamento secondo distanza
             sorted_idxs = np.argsort(trace_distances_copy)
+            # indice start = None (?? perchè)
             start_idx = None
+
+            # ciclo for sul vettore ordinato
             for idx in sorted_idxs:
                 if index_to_skip is None or idx not in index_to_skip:
                     start_idx = idx
@@ -383,21 +444,39 @@ class TraceSorter:
         else:
             start_idx = None
 
+    # ritorna indice iniziale di cono che deve stare a tutti i requisiti
         return start_idx
 
+    # richiamata da select_starting_cones (core_trace_sorter)
     def mask_cone_can_be_first_in_config(
         self, car_position, car_direction, cones, cone_type
     ):
+    # car_direction: vettore 2D
+    # cones: array nx3 [x, y, tipo]
+
         cones_xy = cones[:, :2]  # remove cone type
 
+        # cambia sis. rif: dal sistema di riferimento globale a quello della mappa
+        # matrice va da nx3 a nx2
+        # mediante la funzione di rotate (su math_utils.py)
+        # vogliamo mettere tutto a 0 gradi, perciò durabte il cambiamento anche i
+        # cones_xy - car_position: sposta i coni rispetto alla pos. dell'auto
+        # angle: angolo rispetto all'asse x
+        # rotate: ruota tutti i coni per allineare la posizione dell'auto con l'asse x.
         cones_relative = rotate(
             cones_xy - car_position, -angle_from_2d_vector(car_direction)
         )
+        # angle from 2d vector: si trova in math_utils.py
+        # calcola l'angolo di ogni vettore in vecs.
 
+        # calcolo angoli di ogni cono rispetto all'auto
         cone_relative_angles = angle_from_2d_vector(cones_relative)
 
+        # calcolo distanze coni - auto
         trace_distances = np.linalg.norm(cones_relative, axis=-1)
 
+        # ellisse per selezionare solo coni vicini
+        # su math_utils.py
         mask_is_in_ellipse = points_inside_ellipse(
             cones_xy,
             car_position,
@@ -405,33 +484,44 @@ class TraceSorter:
             self.max_dist_to_first * 1.5,
             self.max_dist_to_first / 1.5,
         )
+        # Determiniamo se i coni sono a sinistra o destra rispetto all'auto
+        # coni sinistri -> angoli positivi
         angle_signs = np.sign(cone_relative_angles)
         valid_angle_sign = 1 if cone_type == ConeTypes.LEFT else -1
         mask_valid_side = angle_signs == valid_angle_sign
+
+        # escludiamo coni troppo lontani o del tipo errato
         mask_is_valid_angle = np.abs(cone_relative_angles) < np.pi - np.pi / 5
         mask_is_valid_angle_min = np.abs(cone_relative_angles) > np.pi / 10
         mask_is_right_color = cones[:, 2] == cone_type
 
+        # creazione della maschera: 
+        # Un cono è valido se sul lato giusto, angolo valido, tipo giusto.
         mask_side = (
             mask_valid_side * mask_is_valid_angle * mask_is_valid_angle_min
         ) + mask_is_right_color
 
         mask_is_not_opposite_cone_type = cones[:, 2] != invert_cone_type(cone_type)
         mask_is_valid = mask_is_in_ellipse * mask_side * mask_is_not_opposite_cone_type
-
+    # trace_distances: vettore con distanze di ogni cono rispetto all'auto
+    # mask_is_valid: boolean che indica quali coni possono essere primo punto valido
         return trace_distances, mask_is_valid
 
     def select_first_k_starting_cones(
         self,
-        car_position: FloatArray,
+        car_position: FloatArray, 
         car_direction: FloatArray,
         cones: FloatArray,
         cone_type: ConeTypes,
     ) -> Optional[np.ndarray]:
+        # ritorna l'indice dei coni iniziali. 
         """
         Return the index of the starting cones. Pick the cone that is closest in front
         of the car and the cone that is closest behind the car.
         """
+
+        # select_starting_cone: ritorna l'indice del cono di partenza
+        # (core_trace_sorter)
         index_1 = self.select_starting_cone(
             car_position,
             car_direction,
@@ -441,10 +531,17 @@ class TraceSorter:
 
         if index_1 is None:
             return None
-
+        # posizione dei coni [x, y] rispetto alla macchina
         cones_to_car = cones[:, :2] - car_position
+
+        # angolo coni - auto tra due vettori
+        # (math_utils.py)
+        # ritorna un vettore in cui ogni elemento contiene l'angolo tra i vettore v1[i] e v2[i]
         angle_to_car = vec_angle_between(cones_to_car, car_direction)
 
+        # non va bene se l'angolo cono - macchina è minore di 90 gradi
+        # faccio indexs_to_skip per rpendere i coni dietro
+        # in particolare il primo dietro
         mask_should_not_be_selected = np.abs(angle_to_car) < np.pi / 2
         idxs_to_skip = np.where(mask_should_not_be_selected)[0]
         if index_1 not in idxs_to_skip:
@@ -459,22 +556,29 @@ class TraceSorter:
             index_to_skip=idxs_to_skip,
         )
 
+    # se non trova il primo cono posteriore restituisce solo il primo
         if index_2 is None:
             return np.array([index_1], dtype=np.int_)
 
+        # vettore distanza va da ?
         cone_dir_1 = cones[index_1, :2] - cones[index_2, :2]
         cone_dir_2 = cones[index_2, :2] - cones[index_1, :2]
 
+        # angle_1 : coerente con direzione dell'auto essendo cono anteriore
         angle_1 = vec_angle_between(cone_dir_1, car_direction)
         angle_2 = vec_angle_between(cone_dir_2, car_direction)
 
+    # controllo che la distanza sia accettabile prima di restituirli
+    # cond. comuni: angle_1 < angle_2
         if angle_1 > angle_2:
             index_1, index_2 = index_2, index_1
 
+        # norm = distanza euclidea tra i due coni
         dist = np.linalg.norm(cone_dir_1)
         if dist > self.max_dist * 1.1 or dist < 1.4:
             return np.array([index_1], dtype=np.int_)
 
+        # array con index2, index1 di tipo int
         two_cones = np.array([index_2, index_1], dtype=np.int_)
-
+     
         return two_cones

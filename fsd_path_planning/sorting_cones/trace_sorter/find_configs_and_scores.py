@@ -64,6 +64,8 @@ def calc_scores_and_end_configurations(
     """
     no_print = True
     with Timer("create_adjacency_matrix", no_print):
+        # create_adjacency_matrix (adjacency_matrix.py)
+        # ritorna la matrice di adiacenza e i nodi raggiungibili
         adjacency_matrix, reachable_nodes = create_adjacency_matrix(
             cones=trace,
             n_neighbors=n_neighbors,
@@ -72,12 +74,19 @@ def calc_scores_and_end_configurations(
             cone_type=cone_type,
         )
 
+    # target_length = il minimo tra il numero di righe dei nodi raggiungibili e la max_length
     target_length = min(reachable_nodes.shape[0], max_length)
 
+    # first_k_indices_must_be optional settato inizialmente a none
     if first_k_indices_must_be is None:
         first_k_indices_must_be = np.arange(0)
 
     with Timer("find_all_end_configurations", no_print):
+        # richiama find_all_end_configurations: (end_configurations.py)
+        # trova tutti i path possibili che includono i nodi raggiungibili a partire dallo starting node.
+        # richiama impl_find_all_configurations.
+        # parametri: indice iniziale, matrice di adiacenza, lunghezza del path.
+        # ritorna un'array 2d di configurazioni (indici) che definisce una path.
         all_end_configurations, history = find_all_end_configurations(
             trace,
             cone_type,
@@ -104,6 +113,7 @@ def calc_scores_and_end_configurations(
             vehicle_direction=vehicle_direction,
             return_individual_costs=False,
         )
+        # ritorna costo totale x ogni config
     costs_sort_idx = np.argsort(costs)
     costs = cast(FloatArray, costs[costs_sort_idx])
     all_end_configurations = cast(IntArray, all_end_configurations[costs_sort_idx])

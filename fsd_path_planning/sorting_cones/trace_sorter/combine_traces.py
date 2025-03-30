@@ -21,28 +21,32 @@ from fsd_path_planning.utils.math_utils import (
     my_njit,
 )
 
-
+# richiamato da core_trace_sorter.py
+# in def sort_left_right
 def calc_final_configs_for_left_and_right(
-    left_scores: Optional[FloatArray],
+    left_scores: Optional[FloatArray], # calcolati da calc_configurations_with_score_for_one_side
+    # costi, configurazioni, history
     left_configs: Optional[IntArray],
     right_scores: Optional[FloatArray],
     right_configs: Optional[IntArray],
-    cones: FloatArray,
+    cones: FloatArray, # vettore flat
     car_pos: FloatArray,
     car_dir: FloatArray,
-) -> tuple[IntArray, IntArray]:
-    left_score_is_none = left_scores is None
+) -> tuple[IntArray, IntArray]: # ritorna right_config, left_config
+    left_score_is_none = left_scores is None #boolean
     left_config_is_none = left_configs is None
     assert left_score_is_none == left_config_is_none
 
+    #flags
     right_score_is_none = right_scores is None
     right_config_is_none = right_configs is None
     assert right_score_is_none == right_config_is_none
 
+    # somma dei costi 
     n_non_none = sum(x is not None for x in (left_scores, right_scores))
 
     # if both sides are None, we have no valid configuration
-    empty_config = np.zeros(0, dtype=int)
+    empty_config = np.zeros(0, dtype=int) # array vuoto di int
     empty_result = (empty_config, empty_config)
 
     if n_non_none == 0:
@@ -50,6 +54,7 @@ def calc_final_configs_for_left_and_right(
 
     if n_non_none == 1:
         # only one side has a valid configuration
+        # prende
         return calc_final_configs_when_only_one_side_has_configs(
             left_configs,
             right_configs,
@@ -68,11 +73,12 @@ def calc_final_configs_for_left_and_right(
         car_dir,
     )
 
-
+# richiamato da calc_final_configs_for_left_and_right
+# (combine_traces.py)
 def calc_final_configs_when_only_one_side_has_configs(
     left_configs: Optional[IntArray],
     right_configs: Optional[IntArray],
-) -> tuple[IntArray, IntArray]:
+) -> tuple[IntArray, IntArray]: # array left_config, right_config
     empty_config = np.zeros(0, dtype=int)
 
     left_config_is_none = left_configs is None
@@ -82,8 +88,11 @@ def calc_final_configs_when_only_one_side_has_configs(
 
     if left_configs is None:
         left_config = empty_config
+        # prende la prima perchè array sorted
+        # prendo quella col costo minore
         right_config = right_configs[0]
         right_config = right_config[right_config != -1]
+        # configurazione non valide settate a -1
     elif right_configs is None:
         right_config = empty_config
         left_config = left_configs[0]
@@ -92,8 +101,9 @@ def calc_final_configs_when_only_one_side_has_configs(
         raise ValueError("Should not happen")
 
     return left_config, right_config
+    # ritorna array vuoto, e uno con configurazioni valide
 
-
+# richiamato da calc_final_configs_for_left_and_right
 def calc_final_configs_when_both_available(
     left_scores: FloatArray,
     left_configs: IntArray,
@@ -104,20 +114,23 @@ def calc_final_configs_when_both_available(
     car_direction: FloatArray,
 ) -> tuple[IntArray, IntArray]:
     # we need to pick the best one for each side
-
+    # ovvero la prima configurazione, quella con costo minore
     left_config = left_configs[0]
     left_config = left_config[left_config != -1]
 
     right_config = right_configs[0]
     right_config = right_config[right_config != -1]
 
+    # PRENDO CONFIGURAZIONI MODIFICATE IN BASE ALL'INDICE COMUNE E LA DISTANZA DAI CONI PRECEDENTI
     left_config, right_config = handle_same_cone_in_both_configs(
         cones, left_config, right_config
     )
 
+    # ritorna configurazioni
     return (left_config, right_config)
 
-
+# richiamato da calc_final_configs_when_both_available
+# (combine_traces.py)
 def handle_same_cone_in_both_configs(
     cones: FloatArray,
     left_config: IntArray,
@@ -128,6 +141,10 @@ def handle_same_cone_in_both_configs(
         left_intersection_idxs,
         right_intersection_idxs,
     ) = np.intersect1d(left_config, right_config, return_indices=True)
+    # Find the intersection of two arrays.
+    # ritorna: 1. Sorted 1D array of common and unique elements.
+    # 2. The indices of the first occurrences of the common values in ar1. Only provided if return_indices is True
+    # 3. The indices of the first occurrences of the common values in ar2. Only provided if return_indices is True.
     if len(same_cone_intersection) == 0:
         return left_config, right_config
 
@@ -151,25 +168,29 @@ def handle_same_cone_in_both_configs(
         right_intersection_index,
     )
 
+    # arriva fino all'indice di stop ritornato dalla funzione richiamata
     left_config = left_config[:left_stop_idx]
     right_config = right_config[:right_stop_idx]
 
     return left_config, right_config
-
-
+# TODO: RIVEDI QUANDO NON LAVORI
+# richiamato da handle_same_cone_in_both_configs
+# (combine_traces.py)
 def calc_new_length_for_configs_for_same_cone_intersection(
     cones: FloatArray,
     left_config: IntArray,
     right_config: IntArray,
     left_intersection_index: int,
     right_intersection_index: int,
-) -> tuple[int, int]:
+) -> tuple[int, int]: # ritorna indici a cui fermarsi
     cones_xy = cones[:, :2]
     if left_intersection_index > 0 and right_intersection_index > 0:
         prev_left = left_config[left_intersection_index - 1]
         prev_right = right_config[right_intersection_index - 1]
-        intersection_cone = left_config[left_intersection_index]
+        intersection_cone = left_config[left_intersection_index] # valore del cono che è in entrambe le configurazioni
 
+        # calcola distanza dai coni precedenti per entrambe le configurazioni,
+        # e lo associa alla configurazione con la distanza minore
         dist_intersection_to_prev_left = np.linalg.norm(
             cones_xy[intersection_cone] - cones_xy[prev_left]
         )
@@ -184,10 +205,10 @@ def calc_new_length_for_configs_for_same_cone_intersection(
         both_distances_very_low = left_dist_is_very_low and right_dist_is_very_low
 
         if any_distance_very_low and not both_distances_very_low:
-            if left_dist_is_very_low:
+            if left_dist_is_very_low: # se sinistro p vicino, prendo tutti quelli a sinistra, e stoppo al conf. a destra all'indice passato
                 left_stop_idx = len(left_config)
                 right_stop_idx = right_intersection_index
-            else:
+            else: # stessa cosa se è a destra
                 left_stop_idx = left_intersection_index
                 right_stop_idx = len(right_config)
         else:
